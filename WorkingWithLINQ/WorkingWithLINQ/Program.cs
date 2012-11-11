@@ -1,5 +1,6 @@
 ﻿using System;
 
+// credit to Andrew Troelsen for many of these examples.  His latest book can be found here: http://www.apress.com/9781430242338
 namespace WorkingWithLINQ
 {
     class Program
