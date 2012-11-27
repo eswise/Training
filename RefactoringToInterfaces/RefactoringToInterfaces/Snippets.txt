@@ -1,0 +1,185 @@
+﻿    public interface ICacheStorage
+    {
+        void Remove(string key);
+        void Store(string key, object data);
+        T Retrieve<T>(string storageKey);
+    }
+
+	public class HttpContextCacheAdapter : ICacheStorage
+    {        
+        public void Remove(string key)
+        {
+            HttpContext.Current.Cache.Remove(key);   
+        }
+
+        public void Store(string key, object data)
+        {
+            HttpContext.Current.Cache.Insert(key, data);    
+        }
+
+        public T Retrieve<T>(string key)
+        {
+            T itemStored = (T)HttpContext.Current.Cache.Get(key);
+            if (itemStored == null)
+                itemStored = default(T);
+
+            return itemStored;       
+        }       
+    }
+
+	public class NullObjectCachingAdapter : ICacheStorage 
+    {        
+        public void Remove(string key)
+        {
+            // Do nothing
+        }
+
+        public void Store(string key, object data)
+        {
+            // Do nothing
+        }
+
+        public T Retrieve<T>(string storageKey)
+        {
+            return default(T);
+        }        
+    }
+
+	public interface IProductRepository
+    {
+        IList<Product> GetAllProducts();
+    }
+
+	public class ProductRepository : IProductRepository
+    {
+        public IList<Product> GetAllProducts()
+        {
+            IList<Product> products = new List<Product>();
+
+            // Database operation to populate products ...
+
+            return products;
+        }
+
+    }
+
+	public class ProductService
+    {
+        private readonly IProductRepository _productRepository;
+        private readonly ICacheStorage _cacheStorage;
+
+        public ProductService(IProductRepository productRepository, ICacheStorage cacheStorage)
+        {           
+            _productRepository = productRepository;
+            _cacheStorage = cacheStorage;
+        }
+
+        public IList<Product> GetAllProducts()
+        {
+            const string storageKey = "ALL_PRODUCTS";
+            IList<Product> products = _cacheStorage.Retrieve<List<Product>>(storageKey);
+
+            if (products == null)                
+            {
+                products = _productRepository.GetAllProducts();
+                _cacheStorage.Store(storageKey, products);
+            }
+
+            return products;
+        }
+    }
+
+    public class MockCacheStorage : ICacheStorage 
+    {
+        private int _retrievedFromCacheCount = 0;
+        private Dictionary<string, object> _cacheStorage = new Dictionary<string, object>(); 
+
+        public int RetrievedFromCacheCount()
+        {
+            return _retrievedFromCacheCount;
+        }
+
+        public void Remove(string key)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Store(string key, object data)
+        {
+            if (_cacheStorage.ContainsKey(key))
+            {
+                _cacheStorage[key] = data;
+            }
+            else 
+            {
+                _cacheStorage.Add(key, data);
+            }
+        }
+
+        public T Retrieve<T>(string key)
+        {
+            if (_cacheStorage.ContainsKey(key))
+            {
+                _retrievedFromCacheCount++;
+                return (T)_cacheStorage[key];
+            }
+            else
+            {
+                return default(T);
+            }
+        }        
+    }
+
+	public class MockProductRepository : IProductRepository 
+    {
+        private int _numberOfTimesCalled = 0;
+
+        public int NumberOfTimesCalled()
+        {
+            return _numberOfTimesCalled;
+        }
+
+        public IList<Product> GetAllProducts()
+        {
+            _numberOfTimesCalled++;
+
+            IList<Product> products = new List<Product>();
+
+            return products;
+        }        
+    }
+
+	[TestFixture]
+    public class ProductServiceTests
+    {
+        [Test]        
+        public void MockCacheIsCaching()
+        {
+            MockCacheStorage mockCacheStorage = new MockCacheStorage();
+            StubProductRepository stubProductRepository = new StubProductRepository();
+            int categoryId = 1;
+            ProductService productService = new ProductService(stubProductRepository, mockCacheStorage);
+
+            productService.GetAllProducts();
+            Assert.AreEqual(0, mockCacheStorage.RetrievedFromCacheCount());
+
+            productService.GetAllProducts();
+            Assert.AreEqual(1, mockCacheStorage.RetrievedFromCacheCount());
+
+        }
+
+        [Test]
+        public void NullCachePreventsCaching()
+        {
+            MockProductRepository mockProductRepository = new MockProductRepository();
+            NullObjectCachingAdapter nullObjectCachingAdapter = new NullObjectCachingAdapter();
+            int categoryId = 1;
+            ProductService productService = new ProductService(mockProductRepository, nullObjectCachingAdapter);
+
+            productService.GetAllProductsIn(categoryId);
+            Assert.AreEqual(1, mockProductRepository.NumberOfTimesCalled());
+
+            productService.GetAllProductsIn(categoryId);
+            Assert.AreEqual(2, mockProductRepository.NumberOfTimesCalled());
+        }
+    }
